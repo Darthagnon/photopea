@@ -12,12 +12,16 @@ root = "www.photopea.com/"
 website = "https://photopea.com/"
 urls = [
     "index.html",
+    "manifest.json",
     "style/all.css",
     "code/ext/ext.js",
     "promo/thumb256.png",
+    "promo/icon512.png",
+    "promo/maskable512.png",
     "code/pp/pp.js",
     "code/dbs/DBS.js",
     "rsrc/basic/basic.zip",
+    "plugins/gallery.html",
     "plugins/gallery.json",
     "code/ext/hb.wasm",
     "code/ext/fribidi.wasm",
@@ -55,7 +59,7 @@ def dl_file(path):
 for url in urls:
     dl_file(url)
 
-db_data = open(root + "code/dbs/DBS.js").read()
+db_data = open(root + "code/dbs/DBS.js", encoding="utf8").read()
 db_vars = re.findall(r"var (\w+)\s*=\s*(\{[\w\W]+?\n\s*\})\s*(?=;|/\*|var)", db_data)
 db = {}
 
@@ -132,6 +136,7 @@ find_and_replace('code/pp/pp.js','8887','')
 
 #Don't load Google Analytics
 find_and_replace('index.html','//www.google-analytics.com/analytics.js','')
+find_and_replace('index.html','//www.googletagmanager.com/gtag/js?id=*','')
 
 #Allow the import of pictures of URLs (bypassing mirror.php)
 find_and_replace('code/pp/pp.js','"mirror.php?url="+encodeURIComponent','')
