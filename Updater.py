@@ -1,4 +1,8 @@
 #!/bin/python3
+
+import sys
+sys.path.insert(0,"_vendor")
+
 import requests
 import os
 import re
@@ -12,54 +16,66 @@ root = "www.photopea.com/"
 website = "https://photopea.com/"
 urls = [
     "index.html",
-    "manifest.json",
     "style/all.css",
     "code/ext/ext.js",
     "promo/thumb256.png",
-    "promo/icon512.png",
-    "promo/maskable512.png",
     "code/pp/pp.js",
     "code/dbs/DBS.js",
     "rsrc/basic/basic.zip",
-    "plugins/gallery.html",
-    "plugins/gallery.json",
     "code/ext/hb.wasm",
     "code/ext/fribidi.wasm",
-    "plugins/tpls/index.html",
-    "plugins/tpls/templates.css",
-    "plugins/tpls/templates.js",
     "papi/tpls.json",
     "rsrc/fonts/fonts.png",
     "code/storages/deviceStorage.html",
     "code/storages/googledriveStorage.html",
     "code/storages/dropboxStorage.html",
-    "rsrc/basic/fa_basic.csh"
+    "img/nft.png",
+    ["templates/?type=0&rsrc=","templates/index.html"],
+    "templates/templates.js",
+    "templates/templates.css",
+    "plugins/gallery.json",
+    "plugins/gallery.html",
+    "img/wows_logo.png",
+    "promo/icon512.png"
+    
 ]
 
 
 
 #Update files
-def dl_file(path):
-    with tqdm(desc=path, unit="B", unit_scale=True) as progress_bar:
-        r = requests.get(website + path, stream=True)
+
+def download_file(remote,local):
+    if os.path.exists(local):
+            #return --- Maybe make some flag for this
+            pass
+    with tqdm(desc=local, unit="B", unit_scale=True) as progress_bar:
+        r = requests.get(remote, stream=True)
         progress_bar.total = int(r.headers.get("Content-Length", 0))
 
         if r.status_code != 200:
             progress_bar.desc += "ERROR: HTTP Status %d" % r.status_code
             return
-
-        outfn = root + path
-        os.makedirs(os.path.dirname(outfn), exist_ok=True)
-        with open(outfn, "wb") as outf:
+        
+        
+        os.makedirs(os.path.dirname(local), exist_ok=True)
+        with open(local, "wb") as outf:
             for chunk in r.iter_content(chunk_size=1024):
                 progress_bar.update(len(chunk))
                 outf.write(chunk)
+def dl_file(path):
+    if isinstance(path,list):
+        outfn=path[1]
+        path=path[0]
+    else:
+        outfn=path
+        path=path
 
+    download_file(website + path,root+outfn)
 
 for url in urls:
     dl_file(url)
 
-db_data = open(root + "code/dbs/DBS.js", encoding="utf8").read()
+db_data = open(root + "code/dbs/DBS.js",encoding="utf-8").read()
 db_vars = re.findall(r"var (\w+)\s*=\s*(\{[\w\W]+?\n\s*\})\s*(?=;|/\*|var)", db_data)
 db = {}
 
@@ -108,22 +124,38 @@ def decompress_font_list(flist):
 
         prev_ff, prev_fsf, prev_flg, prev_cat = ff, fsf, flg, cat
 
-for font in decompress_font_list(db["FNTS"]["list"]):
-    path = "rsrc/fonts/" + font.url
-    if not os.path.isfile(root + path):
-        print("Downloading " + font.url)
-        dl_file(path)
-        print("\n")
+if '--fonts' in sys.argv:
+    for font in decompress_font_list(db["FNTS"]["list"]):
+        path = "rsrc/fonts/" + font.url
+        if not os.path.isfile(root + path):
+            print("Downloading " + font.url)
+            dl_file(path)
+            print("\n")
+    
+    #Delete any unused fonts
+    fonts_db=[root+'rsrc/fonts/'+font.url for font in decompress_font_list(db["FNTS"]["list"])]
+    
+    fonts_local=[_ for _ in glob.glob(root + 'rsrc/fonts/**/*', recursive=True) if re.match(root+r'rsrc/fonts/(.*)/*.(otf|ttc|ttf)',_)]
+    
+    for font_file in list(set(fonts_local)-set(fonts_db)):
+        print('Removing ' + font_file)
+        os.remove(font_file)
 
-#Delete any unused fonts
-fonts_db=[root+'rsrc/fonts/'+font.url for font in decompress_font_list(db["FNTS"]["list"])]
-
-fonts_local=[_ for _ in glob.glob(root + 'rsrc/fonts/**/*', recursive=True) if re.match(r'www.photopea.com/rsrc/fonts/(.*)/*.(otf|ttc|ttf)',_)]
-
-for font_file in list(set(fonts_local)-set(fonts_db)):
-    print('Removing ' + font_file)
-    os.remove(font_file)
-
+if '--templates' in sys.argv:
+    templates_db=['file/' + ('psdshared' if _[4].startswith("https://i.imgur.com/") or _[4].startswith("https://imgur.com/") else 'pp-resources') +'/' + _[3] for _ in json.load(open(root+"papi/tpls.json"))['list']]
+    for template in templates_db:
+        path="https://f000.backblazeb2.com/" + template
+        outfn=root+"templates/"+template
+        download_file(path,outfn)
+        
+    
+    templates_local=[_ for _ in glob.glob(root + 'templates/file/**/*', recursive=True) if _.endswith(".psd")]
+    templates_db=[root+"templates/"+_ for _ in templates_db]
+    
+    for tpl in list(set(templates_local)-set(templates_db)):
+        print('Removing ' + tpl)
+        os.remove(tpl)
+    
 def find_and_replace(file,find,replace):
     with open(os.path.join(root,file),'r') as pp:
         file1=pp.read()
@@ -132,11 +164,11 @@ def find_and_replace(file,find,replace):
         pp.write(file1)
 
 #Allow any port to be used
-find_and_replace('code/pp/pp.js','8887','')
+find_and_replace('code/pp/pp.js','"\'$!|"))','"\'$!|"))||true')
 
 #Don't load Google Analytics
 find_and_replace('index.html','//www.google-analytics.com/analytics.js','')
-find_and_replace('index.html','//www.googletagmanager.com/gtag/js?id=*','')
+find_and_replace('index.html', '//www.googletagmanager.com', '#')
 
 #Allow the import of pictures of URLs (bypassing mirror.php)
 find_and_replace('code/pp/pp.js','"mirror.php?url="+encodeURIComponent','')
@@ -148,3 +180,13 @@ find_and_replace('code/storages/dropboxStorage.html', 'var redirectUri = window.
 find_and_replace('index.html','https://connect.facebook.net','')
 
 find_and_replace('index.html','https://www.facebook.com','')
+
+#Redirect dynamic pages to static equivalent
+find_and_replace('code/pp/pp.js','"&rsrc="','""')
+find_and_replace('code/pp/pp.js','"templates/?type="','"templates/index.html?type="')
+find_and_replace('code/pp/pp.js','"https://f000.backblazeb2.com/file/"', '"templates/file/"')
+
+#Force enable Remove BG, and any other options that are disabled on self-hosted instances (much more brittle to changes than the other replacements)
+find_and_replace("code/pp/pp.js",'("~yy")','("~yy")||true')
+# Having ? in static sites doesn't really work
+#find_and_replace("templates/index.html",'sch.split("?");','sch.split("#");')
